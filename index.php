@@ -1,6 +1,44 @@
+<?php
+// this is a work by teppei@fygame.com
+session_start();
+date_default_timezone_set('prc');
+// session preserve for 2 hours
+$lifeTime = 2 * 3600;
+session_set_cookie_params($lifeTime);
+$username = '';
+$userid = 0;
+$coin = 0;
+if(isset($_SESSION['username']) && isset($_SESSION['userid']) && isset($_SESSION['coin']))
+{
+	$username = $_SESSION['username'];
+	$userid = $_SESSION['userid'];
+	$coin = $_SESSION['coin'];
+}
+else
+{
+	// no login, redirect to login page
+	$headTo = 'login.php';
+	if('' != $_SERVER['QUERY_STRING'])
+	{
+		$headTo .= '?'.$_SERVER['QUERY_STRING'];
+	}
+	header('Location: '.$headTo);
+}
+session_commit();  // close session to prevent block
+require_once 'def.php';
+$lvStepsArr = json_decode(_LVSTEPS);
+$lv = 0;
+foreach($lvStepsArr as $lvStepValue)
+{
+	if($coin < $lvStepValue)
+	{
+		break;
+	}
+	$lv++;
+}
+?>
 <!DOCTYPE html>
 <html>
-
 	<head>
 		<meta charset="utf-8">
 		<title>All in TClub</title>
@@ -80,11 +118,11 @@
 			<aside id="offCanvasSide" class="mui-off-canvas-left">
 				<div id="offCanvasSideScroll" class="mui-scroll-wrapper">
 					<div class="mui-scroll">
-						<div class="title">Hi, Teppei</div>
+						<div class="title">Hi, <?=$username?></div>
 						<div class="content">
-							等级：Lv12，金币：8888。
+							等级：Lv<?=$lv + 1?>，金币：<?=$coin?>。
 							<p style="margin: 10px 15px;">
-								<button id="offCanvasHide" type="button" class="mui-btn mui-btn-danger mui-btn-block" style="padding: 5px 20px;">退出登录</button>
+								<button id="logoutBtn" type="button" class="mui-btn mui-btn-danger mui-btn-block" style="padding: 5px 20px;">退出登录</button>
 							</p>
 
 						</div>
@@ -160,7 +198,16 @@
 		<script src="js/mui.picker.js"></script>
 		<script src="js/mui.poppicker.js"></script>
 		<script src="js/app/preorder_builders.js" type="text/javascript" charset="utf-8"></script>
-		<script>			
+		<script>	
+		<?php
+			echo "const _CM_POSTPARAM_ERROR = "._CM_POSTPARAM_ERROR.";";
+			echo "const _CM_USERIDENTIFY_ERROR = "._CM_USERIDENTIFY_ERROR.";";
+			echo "const _PREORDER_MASK_COINNOTENOUGH = "._PREORDER_MASK_COINNOTENOUGH.";";
+			echo "const _PREORDER_MASK_OTHEROCCUPIED = "._PREORDER_MASK_OTHEROCCUPIED.";";
+			echo "const _PREORDER_MASK_SELFPREORDERED = "._PREORDER_MASK_SELFPREORDERED.";";
+			echo "const _PREORDERPRICE = "._PREORDERPRICE.";";
+			echo "const _PREORDERTIMELIFE = "._PREORDERTIMELIFE.";";
+		?>		
 			mui.init();
 			 //侧滑容器父节点
 			var offCanvasWrapper = mui('#offCanvasWrapper');
@@ -190,6 +237,57 @@
 				}
 				else
 				{
+					mui.ajax('app/preorder.php', {
+						type: 'POST',
+						async: true,
+						data: {userid: <?=$userid?>, builder: app.preorder_builders.current.value}, 
+						dataType: 'json',
+						success: function(data, textStatus)
+						{
+							if(0 == data.code)
+							{
+								if(0 == data.actionCode)
+								{
+									mui.toast('预约成功。');
+								}
+								else if(_PREORDER_MASK_COINNOTENOUGH & data.actionCode)
+								{
+									mui.toast('金币不足。');
+								}
+								else if(_PREORDER_MASK_OTHEROCCUPIED & data.actionCode)
+								{
+									mui.toast('已被抢先预约。');
+								}
+								else if(_PREORDER_MASK_SELFPREORDERED & data.actionCode)
+								{
+									mui.toast('请勿重复预约。');
+								}
+								else
+								{
+									mui.toast('预约失败。');
+								}
+							}
+							else
+							{
+								if(_CM_POSTPARAM_ERROR & data.code)
+								{
+									mui.toast('参数错误。');
+								}
+								else if(_CM_USERIDENTIFY_ERROR & data.code)
+								{
+									mui.toast('用户状态错误。')
+								}
+								else
+								{
+									mui.toast('预约失败。');
+								}								
+							}
+						},
+						error: function(xhr, type, errorThrown)
+						{
+							mui.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
+						}
+					});	
 					// 预约成功，显示倒计时和取消预约
 					var showCityPickerButton = document.getElementById('showCityPicker');
 					showCityPickerButton.style.display = "none";
@@ -203,9 +301,9 @@
 				}
 				
 			});
-			 //菜单界面，‘关闭侧滑菜单’按钮的点击事件
-			document.getElementById('offCanvasHide').addEventListener('tap', function() {
-				offCanvasWrapper.offCanvas('close');
+			 //菜单界面，‘退出登录’按钮的点击事件
+			document.getElementById('logoutBtn').addEventListener('tap', function() {
+				location.href = 'logout.php';
 			});
 			 //主界面和侧滑菜单界面均支持区域滚动；
 			mui('#offCanvasSideScroll').scroll();
@@ -237,5 +335,4 @@
 			})(mui, document);
 		</script>
 	</body>
-
 </html>

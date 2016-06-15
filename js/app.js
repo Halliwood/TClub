@@ -7,7 +7,7 @@
 	/**
 	 * 用户登录
 	 **/
-	owner.login = function(loginInfo, callback) {
+	owner.checkLoginParam = function(loginInfo, callback) {
 		callback = callback || $.noop;
 		loginInfo = loginInfo || {};
 		loginInfo.account = loginInfo.account || '';
@@ -18,15 +18,7 @@
 		if (loginInfo.password.length < 6) {
 			return callback('密码最短为 6 个字符');
 		}
-		var users = JSON.parse(localStorage.getItem('$users') || '[]');
-		var authed = users.some(function(user) {
-			return loginInfo.account == user.account && loginInfo.password == user.password;
-		});
-		if (authed) {
-			return owner.createState(loginInfo.account, callback);
-		} else {
-			return callback('用户名或密码错误');
-		}
+		return callback(null);
 	};
 
 	owner.createState = function(name, callback) {
