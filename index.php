@@ -8,11 +8,10 @@ session_set_cookie_params($lifeTime);
 $username = '';
 $userid = 0;
 $coin = 0;
-if(isset($_SESSION['username']) && isset($_SESSION['userid']) && isset($_SESSION['coin']))
+if(isset($_SESSION['username']) && isset($_SESSION['userid']))
 {
 	$username = $_SESSION['username'];
 	$userid = $_SESSION['userid'];
-	$coin = $_SESSION['coin'];
 }
 else
 {
@@ -25,6 +24,18 @@ else
 	header('Location: '.$headTo);
 }
 session_commit();  // close session to prevent block
+require_once 'db/TClubDBOperator.php';
+$dbo = new TClubDBOperator();
+// query user info
+$userData = $dbo->getUserData($username);
+$userData->setFetchMode(PDO::FETCH_ASSOC);
+$userDataArr = $userData->fetchAll();
+require_once 'db/dbconst.php';
+if (count($userDataArr) > 0)
+{
+	$userDB = $userDataArr[0];
+	$coin = (int)$userDB['coin'];
+}
 require_once 'def.php';
 $lvStepsArr = json_decode(_LVSTEPS);
 $lv = 0;
@@ -35,6 +46,21 @@ foreach($lvStepsArr as $lvStepValue)
 		break;
 	}
 	$lv++;
+}
+// query if ordered
+$builderInfoDB = $dbo->getLatestPreorderInfoByUserid($userid);
+$builderDB = $builderInfoDB->fetchObject();
+$myBuilderInfo = new stdClass();
+if(!empty($builderDB))
+{
+	require_once 'app/tools.php';
+	if(0 != checkPreorderLiftTime($builderDB))
+	{
+		// preorder is alive
+		$myBuilderInfo->builder = $builderDB->builder;
+		$myBuilderInfo->orderID = $builderDB->id;
+		$myBuilderInfo->actionTime = $builderDB->actionTime;
+	}
 }
 ?>
 <!DOCTYPE html>
@@ -118,9 +144,19 @@ foreach($lvStepsArr as $lvStepValue)
 			<aside id="offCanvasSide" class="mui-off-canvas-left">
 				<div id="offCanvasSideScroll" class="mui-scroll-wrapper">
 					<div class="mui-scroll">
-						<div class="title">Hi, <?=$username?></div>
+						<?php
+						if(_USERSTATUS_MASK_ADMIN & $userDB['status'])
+						{
+							echo "<div class=\"title\">Hi, $username(管理员)</div>";
+						}
+						else
+						{
+							echo "<div class=\"title\">Hi, $username</div>";
+						}
+						?>
+						
 						<div class="content">
-							等级：Lv<?=$lv + 1?>，金币：<?=$coin?>。
+							等级：Lv<?=$lv + 1?>，金币：<span class="coinValue"><?=$coin?></span>。
 							<p style="margin: 10px 15px;">
 								<button id="logoutBtn" type="button" class="mui-btn mui-btn-danger mui-btn-block" style="padding: 5px 20px;">退出登录</button>
 							</p>
@@ -166,7 +202,7 @@ foreach($lvStepsArr as $lvStepValue)
 			<div class="mui-inner-wrap">
 				<header class="mui-bar mui-bar-nav">
 					<a href="#offCanvasSide" class="mui-icon mui-action-menu mui-icon-bars mui-pull-left"></a>
-					<a class="mui-action-back mui-btn mui-btn-link mui-pull-right">关闭</a>
+					<a class="mui-btn mui-btn-link mui-pull-right">金币：<span class="coinValue"><?=$coin?></span></a>
 					<h1 class="mui-title">预约构建机</h1>
 				</header>
 				<div id="offCanvasContentScroll" class="mui-content mui-scroll-wrapper">
@@ -174,7 +210,7 @@ foreach($lvStepsArr as $lvStepValue)
 						<div class="mui-content-padded">
 							<p>提前预约构建机可以免除你排队等候的烦恼，每次预约最长保留10分钟。</p>
 							<button id='showCityPicker' class="mui-btn mui-btn-block" type='button'>选择要预约的构建机</button>
-							<p class="prebook" id="prebookInfo" style="display: none;">你已预约构建机：97，09:40后将失效</p>
+							<p class="prebook" id="prebookInfo" style="display: none;">你已预约构建机：x，mm:ss后将失效</p>
 							<p style="padding: 5px 20px;margin-bottom: 5px;">
 								<button id="prebookBtn" type="button" class="mui-btn mui-btn-primary mui-btn-block" style="padding: 10px;">
 									约起来
@@ -197,16 +233,18 @@ foreach($lvStepsArr as $lvStepValue)
 		<script src="js/mui.min.js"></script>
 		<script src="js/mui.picker.js"></script>
 		<script src="js/mui.poppicker.js"></script>
+		<script src="js/tclub.js"></script>
 		<script src="js/app/preorder_builders.js" type="text/javascript" charset="utf-8"></script>
 		<script>	
+			var myBuilder = 0;
+			var orderID = 0;
+			var myActionTime = 0;
+			var orderTimerInterval = 0;
 		<?php
-			echo "const _CM_POSTPARAM_ERROR = "._CM_POSTPARAM_ERROR.";";
-			echo "const _CM_USERIDENTIFY_ERROR = "._CM_USERIDENTIFY_ERROR.";";
-			echo "const _PREORDER_MASK_COINNOTENOUGH = "._PREORDER_MASK_COINNOTENOUGH.";";
-			echo "const _PREORDER_MASK_OTHEROCCUPIED = "._PREORDER_MASK_OTHEROCCUPIED.";";
-			echo "const _PREORDER_MASK_SELFPREORDERED = "._PREORDER_MASK_SELFPREORDERED.";";
-			echo "const _PREORDERPRICE = "._PREORDERPRICE.";";
-			echo "const _PREORDERTIMELIFE = "._PREORDERTIMELIFE.";";
+			echo "\t\t\tmyCoin = ".$coin.";\n";
+			echo "\t\t\tmyBuilder = ".(property_exists($myBuilderInfo, 'builder') ? $myBuilderInfo->builder : 0).";\n";
+			echo "\t\t\tmyOrderID = ".(property_exists($myBuilderInfo, 'orderID') ? $myBuilderInfo->orderID : 0).";\n";
+			echo "\t\t\tmyActionTime = ".(property_exists($myBuilderInfo, 'actionTime') ? $myBuilderInfo->actionTime : 0).";\n";
 		?>		
 			mui.init();
 			 //侧滑容器父节点
@@ -228,78 +266,131 @@ foreach($lvStepsArr as $lvStepValue)
 			//整体滑动时，侧滑菜单在inner-wrap内
 			offCanvasInner.insertBefore(offCanvasSide, offCanvasInner.firstElementChild);
 			offCanvasWrapper.offCanvas().refresh();
-			 //主界面‘我要预约’按钮的点击事件
+			
+			// update my builder info
+			updateMyBuilderInfo();
+			
+			//主界面‘我要预约’按钮的点击事件
 			document.getElementById('prebookBtn').addEventListener('tap', function() {
-				// 执行预约
-				if(0 == app.preorder_builders.current.value)
+				if(myBuilder > 0 && myOrderID > 0 && myActionTime > 0)
 				{
-					mui.toast('请选择要预约的构建机');
+					// 取消预约
+					mui.ajax('app/preorder.php', {
+							type: 'POST',
+							async: true,
+							data: {orderID: myOrderID, action: 0}, 
+							dataType: 'json',
+							success: function(data, textStatus)
+							{
+								if(0 == data.code)
+								{
+									if(0 == data.actionCode)
+									{
+										// update page
+										myBuilder = 0;
+										myOrderID = 0;
+										myActionTime = 0;
+										updateMyBuilderInfo();
+										mui.toast('取消成功。');
+									}
+									else
+									{
+										mui.toast('取消失败。');
+									}
+								}
+								else
+								{
+									if(<?=_CM_POSTPARAM_ERROR?> & data.code)
+									{
+										mui.toast('参数错误。');
+									}
+									else if(<?=_CM_USERIDENTIFY_ERROR?> & data.code)
+									{
+										mui.toast('用户状态错误。')
+									}
+									else
+									{
+										mui.toast('取消失败。');
+									}								
+								}
+							},
+							error: function(xhr, type, errorThrown)
+							{
+								mui.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
+							}
+						});
 				}
 				else
 				{
-					mui.ajax('app/preorder.php', {
-						type: 'POST',
-						async: true,
-						data: {userid: <?=$userid?>, builder: app.preorder_builders.current.value}, 
-						dataType: 'json',
-						success: function(data, textStatus)
-						{
-							if(0 == data.code)
+					// 执行预约
+					if(0 == app.preorder_builders.current.value)
+					{
+						mui.toast('请选择要预约的构建机');
+					}
+					else
+					{
+						mui.ajax('app/preorder.php', {
+							type: 'POST',
+							async: true,
+							data: {builder: app.preorder_builders.current.value, action: 1}, 
+							dataType: 'json',
+							success: function(data, textStatus)
 							{
-								if(0 == data.actionCode)
+								if(0 == data.code)
 								{
-									mui.toast('预约成功。');
-								}
-								else if(_PREORDER_MASK_COINNOTENOUGH & data.actionCode)
-								{
-									mui.toast('金币不足。');
-								}
-								else if(_PREORDER_MASK_OTHEROCCUPIED & data.actionCode)
-								{
-									mui.toast('已被抢先预约。');
-								}
-								else if(_PREORDER_MASK_SELFPREORDERED & data.actionCode)
-								{
-									mui.toast('请勿重复预约。');
+									if(0 == data.actionCode)
+									{
+										// update page
+										myBuilder = data.builder;
+										myOrderID = data.orderID;
+										myActionTime = data.actionTime;
+										myCoin += data.coinDelta;
+										updateMyBuilderInfo();
+										mui('.coinValue').each(function(){
+											this.innerHTML = myCoin;
+										});
+										mui.toast('预约成功，金币 ' + data.coinDelta + '。');
+									}
+									else if(<?=_PREORDER_MASK_COINNOTENOUGH?> & data.actionCode)
+									{
+										mui.toast('金币不足。');
+									}
+									else if(<?=_PREORDER_MASK_OTHEROCCUPIED?> & data.actionCode)
+									{
+										mui.toast('已被抢先预约。');
+									}
+									else if(<?=_PREORDER_MASK_SELFPREORDERED?> & data.actionCode)
+									{
+										mui.toast('请勿重复预约。');
+									}
+									else
+									{
+										mui.toast('预约失败。');
+									}
 								}
 								else
 								{
-									mui.toast('预约失败。');
+									if(<?=_CM_POSTPARAM_ERROR?> & data.code)
+									{
+										mui.toast('参数错误。');
+									}
+									else if(<?=_CM_USERIDENTIFY_ERROR?> & data.code)
+									{
+										mui.toast('用户状态错误。')
+									}
+									else
+									{
+										mui.toast('预约失败。');
+									}								
 								}
-							}
-							else
+							},
+							error: function(xhr, type, errorThrown)
 							{
-								if(_CM_POSTPARAM_ERROR & data.code)
-								{
-									mui.toast('参数错误。');
-								}
-								else if(_CM_USERIDENTIFY_ERROR & data.code)
-								{
-									mui.toast('用户状态错误。')
-								}
-								else
-								{
-									mui.toast('预约失败。');
-								}								
+								mui.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
 							}
-						},
-						error: function(xhr, type, errorThrown)
-						{
-							mui.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
-						}
-					});	
-					// 预约成功，显示倒计时和取消预约
-					var showCityPickerButton = document.getElementById('showCityPicker');
-					showCityPickerButton.style.display = "none";
-					var prebookInfo = document.getElementById("prebookInfo");
-					prebookInfo.style.display = 'block';
-					
-					var prebookButton = document.getElementById('prebookBtn');
-					prebookButton.textContent = '不约了';
-					prebookButton.classList.remove('mui-btn-primary');
-					prebookButton.classList.add('mui-btn-danger');
+						});
+					}
 				}
-				
 			});
 			 //菜单界面，‘退出登录’按钮的点击事件
 			document.getElementById('logoutBtn').addEventListener('tap', function() {
@@ -333,6 +424,57 @@ foreach($lvStepsArr as $lvStepValue)
 					}, false);
 				});
 			})(mui, document);
+			
+			function updateMyBuilderInfo()
+			{
+				var showCityPickerButton = document.getElementById('showCityPicker');
+				var prebookInfo = document.getElementById("prebookInfo");
+				var prebookButton = document.getElementById('prebookBtn');
+				if(myBuilder > 0 && myOrderID > 0 && myActionTime > 0)
+				{
+					var timeSlap = (myActionTime + <?=_PREORDERTIMELIFE?>) * 1000 - new Date().getTime();
+					if(timeSlap > 0)
+					{						
+						showCityPickerButton.style.display = 'none';
+						
+						prebookInfo.textContent = '你已预约构建机' + myBuilder + '，' + formatMS2mmss(timeSlap) + '后将失效';
+						prebookInfo.style.display = 'block';
+												
+						prebookButton.textContent = '不约了';
+						prebookButton.classList.remove('mui-btn-primary');
+						prebookButton.classList.add('mui-btn-danger');
+						
+						// start timer
+						if(0 == orderTimerInterval)
+						{
+							orderTimerInterval = setInterval('updateOrderTime()', 1000);
+						}	
+						return;					
+					}			
+				}
+				
+				if(orderTimerInterval > 0)
+				{
+					clearInterval(orderTimerInterval);
+					orderTimerInterval = 0;
+					
+					myBuilder = 0;
+					myOrderID = 0;
+					myActionTime = 0;
+					
+					prebookInfo.style.display = 'none';
+					showCityPickerButton.style.display = 'block';
+					
+					prebookButton.textContent = '约起来';
+					prebookButton.classList.remove('mui-btn-danger');
+					prebookButton.classList.add('mui-btn-primary');
+				}
+			}
+			
+			function updateOrderTime()
+			{
+				updateMyBuilderInfo();
+			}
 		</script>
 	</body>
 </html>

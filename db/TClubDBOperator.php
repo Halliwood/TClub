@@ -12,11 +12,30 @@ class TClubDBOperator
     {
     	$this->odb = null;
     }
+	
+	public function reg($username, $passwd)
+	{
+		$sql = "INSERT INTO `user`(`name`, `passwd`, `status`) VALUES ('$username', MD5($passwd), 0);";
+	    $this->odb->exec($sql);
+	}
+	
+	public function getUserToken($identifier)
+	{
+		$sql = "SELECT name, token, timeout FROM user WHERE identifier='$identifier' limit 1;";
+    	return $this->odb->query($sql);
+	}
+	
+	public function updateUserToken($userid, $identifier, $token, $timeout)
+	{
+		$sql = "UPDATE user SET `identifier`='$identifier', `token`='$token', `timeout`=$timeout WHERE `id`=$userid;";
+		echo $sql;
+    	return $this->odb->query($sql);
+	}
     
     public function getUserData($username)
     {
-      $sql = "SELECT * FROM user WHERE name='$username';";
-      return $this->odb->query($sql);
+    	$sql = "SELECT id, name, status, coin FROM user WHERE name='$username' limit 1;";
+    	return $this->odb->query($sql);
     }
 
     public function getUserDataByUP($username, $passwd)
@@ -30,7 +49,7 @@ class TClubDBOperator
         	$md5 = "";
         }
         
-        $sql = "SELECT * FROM user WHERE name='$username' AND passwd='$md5';";
+        $sql = "SELECT id, name, status, coin FROM user WHERE name='$username' AND passwd='$md5' limit 1;";
         return $this->odb->query($sql);
     }
 	
@@ -46,51 +65,22 @@ class TClubDBOperator
         return $this->odb->query($sql);
     }
     
-    public function preorderBuilder($userid, $builder, $coinDelta)
+    public function orderBuilder($userid, $builder, $coinDelta)
     {
       // update coin      
-      $sql = "UPDATE user SET `coin`=`coin`+$coinDelta WHERE `userid`='$userid';";
+      $sql = "UPDATE user SET `coin`=`coin`-$coinDelta WHERE `id`='$userid';";
       $this->odb->exec($sql);
       
 	  // insert preorder
-	  $sql = "INSERT INTO `preorder`(`userid`, `builder`, `actionTime`) VALUES ('$userid', $builder, NOW());";
+	  $sql = "INSERT INTO `preorder`(`userid`, `builder`, `actionTime`) VALUES ('$userid', $builder, ".time().");";
       $this->odb->exec($sql);
     }
-
-    /**
-     * 获取未读消息
-     */
-    public function getUnread($username, $roomId)
+	
+	public function cancelOrderBuilder($orderID)
     {
-      $sql = "SELECT * FROM `user` WHERE `name`='$username';";
-      $dbmsg = $this->odb->query($sql);
-      if($dbmsg)
-      {
-        $userdb = $dbmsg->fetchObject();
-        $msgid = $userdb->lastMsgId;
-      }
-      else
-      {
-        $msgid = 0;
-      }
-      
-      $sql = "SELECT * FROM `chatmsg` WHERE `id`>$msgid AND (`roomId`=$roomId OR `targetName`='$username') ORDER BY id;";
-      $rtSql = $this->odb->query($sql);
-      
-      $rtSql->setFetchMode(PDO::FETCH_ASSOC);
-      $arrmsg = $rtSql->fetchAll();
-      $counts = count($arrmsg);
-      if($counts > 0)
-      {
-        $msgid = $arrmsg[$counts - 1]['id'];      
-        $sql = "UPDATE user SET `lastMsgId`=$msgid WHERE `name`='$username';";
-        $this->odb->exec($sql);
-        return $arrmsg;
-      }
-      else
-      {
-        return NULL;
-      }
+      // delete row   
+      $sql = "DELETE FROM preorder WHERE `id`='$orderID';";
+      $this->odb->exec($sql);
     }
 }
 ?>

@@ -1,10 +1,47 @@
 <?php
 require_once 'def.php';
+// check auto login
 $username = '';
+$autoLogin = FALSE;
+$identifier = '';
+$token = '';
 if(isset($_COOKIE['tclub_login']))
 {
-	$cookieArr = explode('|', $_COOKIE['tclub_login']);
-	$username = $cookieArr[0];
+	$clean = array();
+	$mysql = array();
+	
+	$now = time();
+	
+	list($identifier, $token) = array_pad(explode(':', $_COOKIE['tclub_login'], 2), 2, null);
+	if(!is_null($identifier) && !is_null($token) && ctype_alnum($identifier) && ctype_alnum($token))
+	{
+		$clean['identifier'] = $identifier;
+		$clean['token'] = $token;
+		
+		$mysql['identifier'] = mysql_real_escape_string($clean['identifier']);
+		require_once 'db/TClubDBOperator.php';
+		$dbo = new TClubDBOperator();
+		$userTokenSql = $dbo->getUserToken($mysql['identifier']);
+		$userTokenSql->setFetchMode(PDO::FETCH_ASSOC);
+		$userTokenArr = $userTokenSql->fetchAll();
+		if(count($userTokenArr))
+		{
+			$userTokenDB = $userTokenArr[0];
+			if($clean['token'] != $userTokenDB['token'])
+			{
+				// token error
+			}
+			elseif($now > $userTokenDB['timeout'])
+			{
+				// timeout
+			}
+			else
+			{
+				$username = $userTokenDB['name'];
+				$autoLogin = TRUE;
+			}
+		}
+	}
 }
 ?>
 <!DOCTYPE html>
@@ -14,7 +51,6 @@ if(isset($_COOKIE['tclub_login']))
 		<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" />
 		<title></title>
 		<link href="css/mui.min.css" rel="stylesheet" />
-		<link href="css/style.css" rel="stylesheet" />
 		<style>
 			.area {
 				margin: 20px auto 0px auto;
@@ -135,10 +171,8 @@ if(isset($_COOKIE['tclub_login']))
 		<script src="js/app.js"></script>
 		<script>
 		<?php
-			echo "const _CM_USERIDENTIFY_ERROR = "._CM_USERIDENTIFY_ERROR.";";
-			echo "const _CM_USERIDENTIFY_INVALID = "._CM_USERIDENTIFY_INVALID.";";
-			echo "const _CM_USERIDENTIFY_BANNED = "._CM_USERIDENTIFY_BANNED.";";
-			echo "const _CM_USERIDENTIFY_ADMIN = "._CM_USERIDENTIFY_ADMIN.";";
+			require_once('func.php');
+			echo 'var autoLogin = '.($autoLogin ? 'true' : 'false').";\n";
 		?>
 			(function($, doc) {
 				$.init({
@@ -147,22 +181,6 @@ if(isset($_COOKIE['tclub_login']))
 				$.ready(function(){
 					var settings = app.getSettings();
 					var state = app.getState();
-					var toMain = function() {
-						$.openWindow({
-							url: 'index.php',
-							id: 'main',
-							preload: true,
-							show: {
-								aniShow: 'pop-in'
-							},
-							styles: {
-								popGesture: 'hide'
-							},
-							waiting: {
-								autoShow: false
-							}
-						});
-					};
 					//检查 "登录状态/锁屏状态" 结束
 					var loginButton = doc.getElementById('login');
 					var accountBox = doc.getElementById('account');
@@ -175,41 +193,23 @@ if(isset($_COOKIE['tclub_login']))
 							account: accountBox.value,
 							password: passwordBox.value
 						};
-						app.checkLoginParam(loginInfo, function(err) {
-							if (err) {
-								$.toast(err);
-								return;
+						if(0 != checkUsernamePasswd(loginInfo.account, loginInfo.password))
+						{
+							return;
+						}
+						mui.ajax('loginJudge.php', {
+							type: 'POST',
+							async: true,
+							data: {username: loginInfo.account, password: loginInfo.password, isAuto: 0}, 
+							dataType: 'data',
+							success: function(data, textStatus){
+								loginSuccess(data, textStatus);
+							},
+							error: function(xhr, type, errorThrown)
+							{
+								loginError(xhr, type, errorThrown);
 							}
-							mui.ajax('loginJudge.php', {
-								type: 'POST',
-								async: true,
-								data: {username: loginInfo.account, password: loginInfo.password}, 
-								dataType: 'json',
-								success: function(data, textStatus)
-								{
-									if(_CM_USERIDENTIFY_ERROR & data.code)
-									{
-										$.toast('登录失败，请稍侯再试。');
-									}
-									else if(_CM_USERIDENTIFY_INVALID & data.code)
-									{
-										$.toast('用户名或密码错误。');
-									}
-									else if(_CM_USERIDENTIFY_BANNED & data.code)
-									{
-										$.toast('本账号已被禁止登录。');
-									}
-									else
-									{
-										toMain();
-									}
-								},
-								error: function(xhr, type, errorThrown)
-								{
-									$.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
-								}
-							});							
-						});
+						});	
 					});
 					$.enterfocus('#login-form input', function() {
 						$.trigger(loginButton, 'tap');
@@ -224,7 +224,7 @@ if(isset($_COOKIE['tclub_login']))
 					}, false);
 					regButton.addEventListener('tap', function(event) {
 						$.openWindow({
-							url: 'reg.html',
+							url: 'reg.php',
 							id: 'reg',
 							preload: true,
 							show: {
@@ -254,13 +254,74 @@ if(isset($_COOKIE['tclub_login']))
 							}
 						});
 					}, false);
-					//
-					window.addEventListener('resize', function() {
-						oauthArea.style.display = document.body.clientHeight > 400 ? 'block' : 'none';
-					}, false);
-					//
+					
+					if(autoLogin)
+					{
+						setTimeout(function()
+						{
+							loginButton.textContent = '自动登录中...';
+							loginButton.disabled = true;
+							
+							mui.ajax('loginJudge.php', {
+								type: 'POST',
+								async: true,
+								data: {identifier: <?='\''.(is_null($identifier) ? '--' : $identifier).'\''?>, token: <?='\''.(is_null($token) ? '--' : $token).'\''?>, isAuto: 1}, 
+								dataType: 'json',
+								success: function(data, textStatus)
+								{
+									loginSuccess(data, textStatus);
+								},
+								error: function(xhr, type, errorThrown)
+								{
+									loginError(xhr, type, errorThrown);
+								}
+							});
+						}, 500);
+					}
 				});
 			}(mui, document));
+			
+			function loginSuccess(data, textStatus)
+			{
+				if(<?=_CM_USERIDENTIFY_ERROR?> & data.code)
+				{
+					mui.toast('登录失败，请稍侯再试。');
+				}
+				else if(<?=_CM_USERIDENTIFY_INVALID?> & data.code)
+				{
+					mui.toast('用户名或密码错误。');
+				}
+				else if(<?=_CM_USERIDENTIFY_BANNED?> & data.code)
+				{
+					mui.toast('本账号已被禁止登录。');
+				}
+				else if(<?=_CM_USERIDENTIFY_NORECOGNISED?> & data.code)
+				{
+					mui.toast('本账号尚未激活。');
+				}
+				else
+				{
+					mui.openWindow({
+						url: 'index.php',
+						id: 'main',
+						preload: true,
+						show: {
+							aniShow: 'pop-in'
+						},
+						styles: {
+							popGesture: 'hide'
+						},
+						waiting: {
+							autoShow: false
+						}
+					});
+				}
+			}
+			
+			function loginError(xhr, type, errorThrown)
+			{
+				mui.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
+			}
 		</script>
 	</body>
 

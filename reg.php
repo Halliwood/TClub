@@ -1,3 +1,6 @@
+<?php
+require_once 'def.php';
+?>
 <!DOCTYPE html>
 <html class="ui-page-login">
 
@@ -6,7 +9,6 @@
 		<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" />
 		<title></title>
 		<link href="css/mui.min.css" rel="stylesheet" />
-		<link href="css/style.css" rel="stylesheet" />
 		<style>
 			.area {
 				margin: 20px auto 0px auto;
@@ -55,55 +57,84 @@
 					<label>确认</label>
 					<input id='password_confirm' type="password" class="mui-input-clear mui-input" placeholder="请确认密码">
 				</div>
-				<div class="mui-input-row">
-					<label>邮箱</label>
-					<input id='email' type="email" class="mui-input-clear mui-input" placeholder="请输入邮箱">
-				</div>
 			</form>
 			<div class="mui-content-padded">
 				<button id='reg' class="mui-btn mui-btn-block mui-btn-primary">注册</button>
 			</div>
 			<div class="mui-content-padded">
-				<p>注册真实可用，注册成功后的用户可用于登录，但是示例程序并未和服务端交互，用户相关数据仅存储于本地。</p>
+				<p>注册成为会员将获得500金币。</p>
 			</div>
 		</div>
 		<script src="js/mui.min.js"></script>
 		<script src="js/app.js"></script>
 		<script>
+		<?php
+			require_once('func.php');
+		?>
 			(function($, doc) {
 				$.init();
 				$.ready(function() {
+					var toLogin = function() {
+						$.openWindow({
+							url: 'login.php',
+							id: 'login',
+							preload: true,
+							show: {
+								aniShow: 'pop-in'
+							},
+							styles: {
+								popGesture: 'hide'
+							},
+							waiting: {
+								autoShow: false
+							}
+						});
+					};
 					var settings = app.getSettings();
 					var regButton = doc.getElementById('reg');
 					var accountBox = doc.getElementById('account');
 					var passwordBox = doc.getElementById('password');
 					var passwordConfirmBox = doc.getElementById('password_confirm');
-					var emailBox = doc.getElementById('email');
 					regButton.addEventListener('tap', function(event) {
-						var regInfo = {
-							account: accountBox.value,
-							password: passwordBox.value,
-							email: emailBox.value
-						};
-						var passwordConfirm = passwordConfirmBox.value;
-						if (passwordConfirm != regInfo.password) {
-							$.toast('密码两次输入不一致');
+						var accountValue = accountBox.value;
+						var passwdValue = passwordBox.value;
+						if(0 != checkUsernamePasswd(accountValue, passwdValue))
+						{
 							return;
 						}
-						app.reg(regInfo, function(err) {
-							if (err) {
-								plus.nativeUI.toast(err);
-								return;
-							}
-							$.toast('注册成功');
-							$.openWindow({
-								url: 'login.html',
-								id: 'login',
-								show: {
-									aniShow: 'pop-in'
+						var passwordConfirm = passwordConfirmBox.value;
+						if (passwordConfirm != passwdValue) {
+							$.toast('密码两次输入不一致。');
+							return;
+						}
+						mui.ajax('regIssue.php', {
+								type: 'POST',
+								async: true,
+								data: {username: accountValue, password: passwdValue}, 
+								dataType: 'json',
+								success: function(data, textStatus)
+								{
+									console.log('data = %s', JSON.stringify(data));
+									if(0 == data.code)
+									{
+										mui.alert('点击确定登录。', '注册成功', function() {
+											toLogin();
+										});
+									}
+									else if(<?=_REG_MASK_EXIST?> & data.actionCode)
+									{
+										$.toast('用户名已存在。');
+									}
+									else
+									{
+										$.toast('注册失败。');
+									}
+								},
+								error: function(xhr, type, errorThrown)
+								{
+									$.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
 								}
-							});
-						});
+							});	
 					});
 				});
 			}(mui, document));

@@ -4,7 +4,7 @@ $code = 0;
 require_once 'def.php';
 if(!isset($_POST['username']) || !isset($_POST['password']))
 {
-	$code |= _CM_USERIDENTIFY_ERROR;
+	$code |= _CM_POSTPARAM_ERROR;
 }
 else
 {
@@ -18,27 +18,33 @@ else
 	require_once 'db/dbconst.php';
 	if (count($userDataArr) > 0)
 	{
-	  $userDB = $userDataArr[0];
-	  if(_USERSTATUS_MASK_BANNED & $userDB['status'])
-	  {
-	  	// banned
-	    $code |= _CM_USERIDENTIFY_BANNED;
-	  }
-	  else
-	  {
-	    $timeout = time() + 60 * 60 * 24 * 7;
-	    setcookie("tclub_login", $username, $timeout);
-	    if(_USERSTATUS_MASK_ADMIN & $userDB['status'])
+		$userDB = $userDataArr[0];
+		if(_USERSTATUS_MASK_BANNED & $userDB['status'])
 		{
-			$code |= _CM_USERIDENTIFY_ADMIN;
+			// banned
+			$code |= _CM_USERIDENTIFY_BANNED;
 		}
-		session_start();
-		$_SESSION['username'] = $username;
-		$_SESSION['userid'] = $userDB['id'];
-		$_SESSION['status'] = $userDB['status'];
-		$_SESSION['coin'] = $userDB['coin'];
-		session_commit();
-	  }
+		else if(!(_USERSTATUS_MASK_RECOGNISED & $userDB['status']))
+		{
+			// not recognised
+			$code |= _CM_USERIDENTIFY_NORECOGNISED;
+		}
+		else
+		{
+			session_start();
+			$_SESSION['username'] = $username;
+			$_SESSION['userid'] = $userDB['id'];
+			$_SESSION['status'] = $userDB['status'];
+			session_commit();
+		
+			// update identifier and token and write into cookie
+			$identifier = md5(_ENC_SALT.md5($username._ENC_SALT));
+			$token = md5(uniqid(rand(), TRUE));
+			$timeout = time() + 60 * 60 * 24 * 7;
+			
+			$dbo->updateUserToken($userDB['id'], $identifier, $token, $timeout);
+			setcookie('tclub_login', "$identifier:$token", $timeout);
+		}
 	}
 	else
 	{

@@ -1,4 +1,5 @@
 <?php
-define('_USERSTATUS_MASK_BANNED', 1);
-define('_USERSTATUS_MASK_ADMIN', 2);
+define('_USERSTATUS_MASK_RECOGNISED', 1);
+define('_USERSTATUS_MASK_BANNED', 2);
+define('_USERSTATUS_MASK_ADMIN', 4);
 ?>
