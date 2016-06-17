@@ -2,47 +2,6 @@
 require_once 'def.php';
 // check auto login
 $username = '';
-$autoLogin = FALSE;
-$identifier = '';
-$token = '';
-if(isset($_COOKIE['tclub_login']))
-{
-	$clean = array();
-	$mysql = array();
-	
-	$now = time();
-	
-	list($identifier, $token) = array_pad(explode(':', $_COOKIE['tclub_login'], 2), 2, null);
-	if(!is_null($identifier) && !is_null($token) && ctype_alnum($identifier) && ctype_alnum($token))
-	{
-		$clean['identifier'] = $identifier;
-		$clean['token'] = $token;
-		
-		$mysql['identifier'] = mysql_real_escape_string($clean['identifier']);
-		require_once 'db/TClubDBOperator.php';
-		$dbo = new TClubDBOperator();
-		$userTokenSql = $dbo->getUserToken($mysql['identifier']);
-		$userTokenSql->setFetchMode(PDO::FETCH_ASSOC);
-		$userTokenArr = $userTokenSql->fetchAll();
-		if(count($userTokenArr))
-		{
-			$userTokenDB = $userTokenArr[0];
-			if($clean['token'] != $userTokenDB['token'])
-			{
-				// token error
-			}
-			elseif($now > $userTokenDB['timeout'])
-			{
-				// timeout
-			}
-			else
-			{
-				$username = $userTokenDB['name'];
-				$autoLogin = TRUE;
-			}
-		}
-	}
-}
 ?>
 <!DOCTYPE html>
 <html class="ui-page-login">
@@ -172,7 +131,6 @@ if(isset($_COOKIE['tclub_login']))
 		<script>
 		<?php
 			require_once('func.php');
-			echo 'var autoLogin = '.($autoLogin ? 'true' : 'false').";\n";
 		?>
 			(function($, doc) {
 				$.init({
@@ -200,8 +158,8 @@ if(isset($_COOKIE['tclub_login']))
 						mui.ajax('loginJudge.php', {
 							type: 'POST',
 							async: true,
-							data: {username: loginInfo.account, password: loginInfo.password, isAuto: 0}, 
-							dataType: 'data',
+							data: {username: loginInfo.account, password: loginInfo.password, type: <?=_LOGINTYPE_USERNAMEPASSWD?>, auto: autoLoginButton.isActive}, 
+							dataType: 'json',
 							success: function(data, textStatus){
 								loginSuccess(data, textStatus);
 							},
@@ -209,7 +167,7 @@ if(isset($_COOKIE['tclub_login']))
 							{
 								loginError(xhr, type, errorThrown);
 							}
-						});	
+						});
 					});
 					$.enterfocus('#login-form input', function() {
 						$.trigger(loginButton, 'tap');
@@ -255,7 +213,7 @@ if(isset($_COOKIE['tclub_login']))
 						});
 					}, false);
 					
-					if(autoLogin)
+					if(settings.autoLogin)
 					{
 						setTimeout(function()
 						{
@@ -265,7 +223,7 @@ if(isset($_COOKIE['tclub_login']))
 							mui.ajax('loginJudge.php', {
 								type: 'POST',
 								async: true,
-								data: {identifier: <?='\''.(is_null($identifier) ? '--' : $identifier).'\''?>, token: <?='\''.(is_null($token) ? '--' : $token).'\''?>, isAuto: 1}, 
+								data: {type: <?=_LOGINTYPE_TOKEN?>, auto: 1}, 
 								dataType: 'json',
 								success: function(data, textStatus)
 								{
@@ -283,23 +241,7 @@ if(isset($_COOKIE['tclub_login']))
 			
 			function loginSuccess(data, textStatus)
 			{
-				if(<?=_CM_USERIDENTIFY_ERROR?> & data.code)
-				{
-					mui.toast('登录失败，请稍侯再试。');
-				}
-				else if(<?=_CM_USERIDENTIFY_INVALID?> & data.code)
-				{
-					mui.toast('用户名或密码错误。');
-				}
-				else if(<?=_CM_USERIDENTIFY_BANNED?> & data.code)
-				{
-					mui.toast('本账号已被禁止登录。');
-				}
-				else if(<?=_CM_USERIDENTIFY_NORECOGNISED?> & data.code)
-				{
-					mui.toast('本账号尚未激活。');
-				}
-				else
+				if(0 == data.code)
 				{
 					mui.openWindow({
 						url: 'index.php',
@@ -316,11 +258,52 @@ if(isset($_COOKIE['tclub_login']))
 						}
 					});
 				}
+				else
+				{
+					resetLoginButton();
+					if(<?=_CM_USERIDENTIFY_ERROR?> & data.code)
+					{
+						mui.toast('登录失败，请稍侯再试。');
+					}
+					else if(<?=_CM_USERIDENTIFY_INVALID?> & data.code)
+					{
+						mui.toast('用户名或密码错误。');
+					}
+					else if(<?=_CM_USERIDENTIFY_BANNED?> & data.code)
+					{
+						mui.toast('本账号已被禁止登录。');
+					}
+					else if(<?=_CM_USERIDENTIFY_NORECOGNISED?> & data.code)
+					{
+						alert(JSON.stringify(data));
+						mui.toast('本账号尚未激活。');
+					}
+					else if(<?=_CM_USERIDENTIFY_TOKENERROR?> & data.code)
+					{
+						mui.toast('自动登录信息异常，请重新登录。');
+					}
+					else if(<?=_CM_USERIDENTIFY_TIMEOUT?> & data.code)
+					{
+						mui.toast('自动登录已过期，请重新登录。');
+					}
+					else
+					{
+						mui.toast('登录错误。(' + data.code + ')');
+					}
+				}
 			}
 			
 			function loginError(xhr, type, errorThrown)
 			{
+				resetLoginButton();
 				mui.toast('ERROR: ' + xhr.status + ', ' + xhr.readyState + ', ' + type + ', ' + errorThrown);
+			}
+			
+			function resetLoginButton()
+			{
+				var loginButton = document.getElementById('login');
+				loginButton.textContent = '登录';
+				loginButton.disabled = false;
 			}
 		</script>
 	</body>

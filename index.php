@@ -166,12 +166,12 @@ if(!empty($builderDB))
 						<ul class="mui-table-view mui-table-view-chevron mui-table-view-inverted">
 							<li class="mui-table-view-cell">
 								<a class="mui-navigate-right">
-									预约构建机
+									赚金币
 								</a>
 							</li>
 							<li class="mui-table-view-cell">
 								<a class="mui-navigate-right">
-									赚金币
+									敬请期待
 								</a>
 							</li>
 							<li class="mui-table-view-cell">
@@ -233,6 +233,7 @@ if(!empty($builderDB))
 		<script src="js/mui.min.js"></script>
 		<script src="js/mui.picker.js"></script>
 		<script src="js/mui.poppicker.js"></script>
+		<script src="js/app.js"></script>
 		<script src="js/tclub.js"></script>
 		<script src="js/app/preorder_builders.js" type="text/javascript" charset="utf-8"></script>
 		<script>	
@@ -323,7 +324,7 @@ if(!empty($builderDB))
 				else
 				{
 					// 执行预约
-					if(0 == app.preorder_builders.current.value)
+					if(0 == orderVo.preorder_builders.current.value)
 					{
 						mui.toast('请选择要预约的构建机');
 					}
@@ -332,7 +333,7 @@ if(!empty($builderDB))
 						mui.ajax('app/preorder.php', {
 							type: 'POST',
 							async: true,
-							data: {builder: app.preorder_builders.current.value, action: 1}, 
+							data: {builder: orderVo.preorder_builders.current.value, action: 1}, 
 							dataType: 'json',
 							success: function(data, textStatus)
 							{
@@ -392,10 +393,7 @@ if(!empty($builderDB))
 					}
 				}
 			});
-			 //菜单界面，‘退出登录’按钮的点击事件
-			document.getElementById('logoutBtn').addEventListener('tap', function() {
-				location.href = 'logout.php';
-			});
+			
 			 //主界面和侧滑菜单界面均支持区域滚动；
 			mui('#offCanvasSideScroll').scroll();
 			mui('#offCanvasContentScroll').scroll();
@@ -416,12 +414,20 @@ if(!empty($builderDB))
 					var showCityPickerButton = doc.getElementById('showCityPicker');
 					showCityPickerButton.addEventListener('tap', function(event) {
 						cityPicker.show(function(items) {
-							app.preorder_builders.current.value = items[0].value;
+							orderVo.preorder_builders.current.value = items[0].value;
 							showCityPickerButton.textContent = "你预约的构建机是:" + items[0].text;
 							//返回 false 可以阻止选择框的关闭
 							//return false;
 						});
 					}, false);
+					
+					//菜单界面，‘退出登录’按钮的点击事件
+					doc.getElementById('logoutBtn').addEventListener('tap', function(event) {
+						var settings = app.getSettings();
+						settings.autoLogin = false;
+						app.setSettings(settings);
+						location.href = 'logout.php';
+					});
 				});
 			})(mui, document);
 			

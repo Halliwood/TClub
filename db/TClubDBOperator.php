@@ -21,14 +21,13 @@ class TClubDBOperator
 	
 	public function getUserToken($identifier)
 	{
-		$sql = "SELECT name, token, timeout FROM user WHERE identifier='$identifier' limit 1;";
+		$sql = "SELECT id, name, status, token, timeout FROM user WHERE identifier='$identifier' limit 1;";
     	return $this->odb->query($sql);
 	}
 	
 	public function updateUserToken($userid, $identifier, $token, $timeout)
 	{
 		$sql = "UPDATE user SET `identifier`='$identifier', `token`='$token', `timeout`=$timeout WHERE `id`=$userid;";
-		echo $sql;
     	return $this->odb->query($sql);
 	}
     
